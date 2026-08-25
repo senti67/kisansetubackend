@@ -17,6 +17,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   farmer Farmer?
+  orders Order[]
 }
 
 model Farmer {
@@ -83,6 +84,34 @@ model Produce {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  orders    Order[]
+}
+
+model Order {
+  id Int @id @default(autoincrement())
+
+  buyerId   Int
+  produceId Int
+
+  buyer   User    @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  produce Produce @relation(fields: [produceId], references: [id], onDelete: Cascade)
+
+  quantity   Float
+  unit       String
+  unitPrice  Float
+  totalPrice Float
+
+  status OrderStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
 }
 
 enum UserRole {

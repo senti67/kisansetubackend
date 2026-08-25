@@ -1,5 +1,6 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+
 const prisma = require("../lib/prisma");
 
 // ==========================
@@ -7,12 +8,27 @@ const prisma = require("../lib/prisma");
 // ==========================
 const register = async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const {
+      name,
+      email,
+      password,
+      phone,
+      role = "FARMER",
+    } = req.body;
 
     // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({
         message: "Name, email and password are required",
+      });
+    }
+
+    // Only FARMER and BUYER can self-register
+    const allowedRoles = ["FARMER", "BUYER"];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        message: "Invalid role. Use FARMER or BUYER",
       });
     }
 
@@ -32,34 +48,39 @@ const register = async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create User and Farmer together
+    // Create User
     const user = await prisma.user.create({
       data: {
         name,
         email,
         passwordHash,
         phone,
-        role: "FARMER",
-
-        farmer: {
-          create: {},
-        },
-      },
-
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        farmer: true,
-        createdAt: true,
+        role,
       },
     });
 
+    // Create Farmer profile only for FARMER
+    if (role === "FARMER") {
+      await prisma.farmer.create({
+        data: {
+          userId: user.id,
+        },
+      });
+    }
+
     return res.status(201).json({
-      message: "Farmer registered successfully",
-      user,
+      message:
+        role === "FARMER"
+          ? "Farmer registered successfully"
+          : "Buyer registered successfully",
+
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -97,7 +118,7 @@ const login = async (req, res) => {
       });
     }
 
-    // Compare password with bcrypt hash
+    // Compare password
     const passwordMatch = await bcrypt.compare(
       password,
       user.passwordHash
@@ -142,6 +163,10 @@ const login = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// GET CURRENT USER
+// ==========================
 const getMe = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
