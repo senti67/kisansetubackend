@@ -3,6 +3,7 @@ const prisma = require("../lib/prisma");
 // ==========================
 // ADMIN DASHBOARD
 // ==========================
+
 const getDashboard = async (req, res) => {
   try {
     const [
@@ -31,8 +32,11 @@ const getDashboard = async (req, res) => {
       }),
 
       prisma.farm.count(),
+
       prisma.crop.count(),
+
       prisma.produce.count(),
+
       prisma.order.count(),
 
       prisma.order.count({
@@ -73,6 +77,7 @@ const getDashboard = async (req, res) => {
 // ==========================
 // GET ALL USERS
 // ==========================
+
 const getUsers = async (req, res) => {
   try {
     const users = await prisma.user.findMany({
@@ -83,6 +88,7 @@ const getUsers = async (req, res) => {
         phone: true,
         role: true,
         createdAt: true,
+
         farmer: {
           select: {
             id: true,
@@ -91,6 +97,7 @@ const getUsers = async (req, res) => {
           },
         },
       },
+
       orderBy: {
         createdAt: "desc",
       },
@@ -108,6 +115,10 @@ const getUsers = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// UPDATE USER ROLE
+// ==========================
 
 const updateUserRole = async (req, res) => {
   try {
@@ -156,9 +167,11 @@ const updateUserRole = async (req, res) => {
       where: {
         id: userId,
       },
+
       data: {
         role,
       },
+
       select: {
         id: true,
         name: true,
@@ -181,9 +194,11 @@ const updateUserRole = async (req, res) => {
     });
   }
 };
+
 // ==========================
 // GET ALL ORDERS
 // ==========================
+
 const getOrders = async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
@@ -196,6 +211,7 @@ const getOrders = async (req, res) => {
             phone: true,
           },
         },
+
         produce: {
           include: {
             crop: {
@@ -203,6 +219,7 @@ const getOrders = async (req, res) => {
                 farm: true,
               },
             },
+
             farmer: {
               include: {
                 user: {
@@ -218,6 +235,7 @@ const getOrders = async (req, res) => {
           },
         },
       },
+
       orderBy: {
         createdAt: "desc",
       },
@@ -239,6 +257,7 @@ const getOrders = async (req, res) => {
 // ==========================
 // GET ALL PRODUCE
 // ==========================
+
 const getProduce = async (req, res) => {
   try {
     const produce = await prisma.produce.findMany({
@@ -255,12 +274,14 @@ const getProduce = async (req, res) => {
             },
           },
         },
+
         crop: {
           include: {
             farm: true,
           },
         },
       },
+
       orderBy: {
         createdAt: "desc",
       },
@@ -278,6 +299,11 @@ const getProduce = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// UPDATE PRODUCE STATUS
+// ==========================
+
 const updateProduceStatus = async (req, res) => {
   try {
     const produceId = Number(req.params.id);
@@ -317,11 +343,14 @@ const updateProduceStatus = async (req, res) => {
       where: {
         id: produceId,
       },
+
       data: {
         status,
       },
+
       include: {
         crop: true,
+
         farmer: {
           include: {
             user: {
@@ -349,6 +378,11 @@ const updateProduceStatus = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// UPDATE ORDER STATUS
+// ==========================
+
 const updateOrderStatus = async (req, res) => {
   try {
     const orderId = Number(req.params.id);
@@ -376,6 +410,7 @@ const updateOrderStatus = async (req, res) => {
       where: {
         id: orderId,
       },
+
       include: {
         produce: true,
       },
@@ -387,7 +422,10 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Terminal states cannot be changed
+    // ==========================
+    // TERMINAL STATES
+    // ==========================
+
     if (
       order.status === "COMPLETED" ||
       order.status === "CANCELLED"
@@ -397,14 +435,18 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Only allow sensible transitions
+    // ==========================
+    // VALID STATE TRANSITIONS
+    // ==========================
+
     if (
       order.status === "CONFIRMED" &&
       status !== "COMPLETED" &&
       status !== "CANCELLED"
     ) {
       return res.status(400).json({
-        message: "CONFIRMED orders can only be COMPLETED or CANCELLED",
+        message:
+          "CONFIRMED orders can only be COMPLETED or CANCELLED",
       });
     }
 
@@ -414,37 +456,86 @@ const updateOrderStatus = async (req, res) => {
       status !== "CANCELLED"
     ) {
       return res.status(400).json({
-        message: "PENDING orders can only be CONFIRMED or CANCELLED",
+        message:
+          "PENDING orders can only be CONFIRMED or CANCELLED",
       });
     }
 
+    // ==========================
+    // TRANSACTION
+    // ==========================
+
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      // If cancelling a confirmed order,
-      // restore the reserved quantity to produce.
+      // --------------------------------
+      // CONFIRMED → CANCELLED
+      // --------------------------------
+
       if (
         order.status === "CONFIRMED" &&
         status === "CANCELLED"
       ) {
+        const cancelledOrder = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            status: "CONFIRMED",
+          },
+
+          data: {
+            status: "CANCELLED",
+          },
+        });
+
+        // Another request changed the order first
+        if (cancelledOrder.count !== 1) {
+          throw new Error("ORDER_STATE_CHANGED");
+        }
+
+        // Restore inventory
         await tx.produce.update({
           where: {
             id: order.produceId,
           },
+
           data: {
             quantity: {
               increment: order.quantity,
             },
+
             status: "AVAILABLE",
           },
         });
       }
 
-      return tx.order.update({
+      // --------------------------------
+      // OTHER VALID TRANSITIONS
+      // --------------------------------
+
+      else {
+        const updated = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            status: order.status,
+          },
+
+          data: {
+            status,
+          },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error("ORDER_STATE_CHANGED");
+        }
+      }
+
+      // --------------------------------
+      // RETURN UPDATED ORDER
+      // --------------------------------
+
+      return tx.order.findUnique({
         where: {
           id: orderId,
         },
-        data: {
-          status,
-        },
+
         include: {
           buyer: {
             select: {
@@ -454,6 +545,7 @@ const updateOrderStatus = async (req, res) => {
               phone: true,
             },
           },
+
           produce: {
             include: {
               crop: true,
@@ -468,6 +560,13 @@ const updateOrderStatus = async (req, res) => {
       order: updatedOrder,
     });
   } catch (error) {
+    // Concurrent state change
+    if (error.message === "ORDER_STATE_CHANGED") {
+      return res.status(409).json({
+        message: "Order status changed by another request",
+      });
+    }
+
     console.error("Admin order status error:", error);
 
     return res.status(500).json({
@@ -475,6 +574,11 @@ const updateOrderStatus = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// EXPORT
+// ==========================
+
 module.exports = {
   getDashboard,
   getUsers,

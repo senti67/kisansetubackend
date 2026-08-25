@@ -3,11 +3,12 @@ const prisma = require("../lib/prisma");
 // ==========================
 // CREATE CROP
 // ==========================
+
 const createCrop = async (req, res) => {
   try {
     const farmId = Number(req.params.farmId);
 
-    if (Number.isNaN(farmId)) {
+    if (!Number.isInteger(farmId) || farmId <= 0) {
       return res.status(400).json({
         message: "Invalid farm ID",
       });
@@ -21,9 +22,82 @@ const createCrop = async (req, res) => {
       unit,
     } = req.body;
 
-    if (!name) {
+    // Validate crop name
+    if (
+      typeof name !== "string" ||
+      !name.trim()
+    ) {
       return res.status(400).json({
         message: "Crop name is required",
+      });
+    }
+
+    const normalizedName = name.trim();
+
+    if (
+      normalizedName.length < 2 ||
+      normalizedName.length > 100
+    ) {
+      return res.status(400).json({
+        message:
+          "Crop name must be between 2 and 100 characters",
+      });
+    }
+
+    // Validate variety if provided
+    if (
+      variety !== undefined &&
+      variety !== null &&
+      (
+        typeof variety !== "string" ||
+        variety.trim().length > 100
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid crop variety",
+      });
+    }
+
+    // Validate season if provided
+    if (
+      season !== undefined &&
+      season !== null &&
+      (
+        typeof season !== "string" ||
+        season.trim().length > 50
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid crop season",
+      });
+    }
+
+    // Validate quantity
+    if (
+      quantity !== undefined &&
+      (
+        typeof quantity !== "number" ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0
+      )
+    ) {
+      return res.status(400).json({
+        message: "Quantity must be a positive number",
+      });
+    }
+
+    // Validate unit
+    if (
+      unit !== undefined &&
+      unit !== null &&
+      (
+        typeof unit !== "string" ||
+        unit.trim().length < 1 ||
+        unit.trim().length > 20
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid unit",
       });
     }
 
@@ -40,7 +114,7 @@ const createCrop = async (req, res) => {
       });
     }
 
-    // Make sure this farm belongs to the logged-in farmer
+    // Make sure farm belongs to logged-in farmer
     const farm = await prisma.farm.findFirst({
       where: {
         id: farmId,
@@ -57,11 +131,23 @@ const createCrop = async (req, res) => {
     const crop = await prisma.crop.create({
       data: {
         farmId,
-        name,
-        variety,
-        season,
+        name: normalizedName,
+
+        variety:
+          variety !== undefined && variety !== null
+            ? variety.trim()
+            : null,
+
+        season:
+          season !== undefined && season !== null
+            ? season.trim()
+            : null,
+
         quantity,
-        unit,
+        unit:
+          unit !== undefined && unit !== null
+            ? unit.trim()
+            : null,
       },
     });
 
@@ -81,11 +167,12 @@ const createCrop = async (req, res) => {
 // ==========================
 // GET CROPS FOR MY FARM
 // ==========================
+
 const getFarmCrops = async (req, res) => {
   try {
     const farmId = Number(req.params.farmId);
 
-    if (Number.isNaN(farmId)) {
+    if (!Number.isInteger(farmId) || farmId <= 0) {
       return res.status(400).json({
         message: "Invalid farm ID",
       });
@@ -103,6 +190,7 @@ const getFarmCrops = async (req, res) => {
       });
     }
 
+    // Make sure farm belongs to logged-in farmer
     const farm = await prisma.farm.findFirst({
       where: {
         id: farmId,
@@ -120,6 +208,7 @@ const getFarmCrops = async (req, res) => {
       where: {
         farmId,
       },
+
       orderBy: {
         createdAt: "desc",
       },
@@ -136,6 +225,10 @@ const getFarmCrops = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// EXPORT
+// ==========================
 
 module.exports = {
   createCrop,

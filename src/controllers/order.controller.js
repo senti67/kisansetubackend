@@ -3,24 +3,35 @@ const prisma = require("../lib/prisma");
 // ==========================
 // CREATE ORDER
 // ==========================
+
 const createOrder = async (req, res) => {
   try {
     const produceId = Number(req.params.produceId);
     const { quantity } = req.body;
 
-    if (Number.isNaN(produceId)) {
+    // Validate produce ID
+    if (!Number.isInteger(produceId) || produceId <= 0) {
       return res.status(400).json({
         message: "Invalid produce ID",
       });
     }
 
-    if (!quantity || Number(quantity) <= 0) {
+    // Validate quantity
+    if (
+      typeof quantity !== "number" ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0
+    ) {
       return res.status(400).json({
-        message: "Quantity must be greater than zero",
+        message: "Quantity must be a positive number",
       });
     }
 
-    const requestedQuantity = Number(quantity);
+    const requestedQuantity = quantity;
+
+    // ==========================
+    // VERIFY BUYER
+    // ==========================
 
     const buyer = await prisma.user.findUnique({
       where: {
@@ -40,6 +51,10 @@ const createOrder = async (req, res) => {
       });
     }
 
+    // ==========================
+    // FIND AVAILABLE PRODUCE
+    // ==========================
+
     const produce = await prisma.produce.findFirst({
       where: {
         id: produceId,
@@ -53,22 +68,43 @@ const createOrder = async (req, res) => {
       });
     }
 
+    // ==========================
+    // VALIDATE PRICE
+    // ==========================
+
+    if (
+      produce.price === null ||
+      !Number.isFinite(produce.price) ||
+      produce.price < 0
+    ) {
+      return res.status(400).json({
+        message: "This produce has an invalid price",
+      });
+    }
+
+    // ==========================
+    // CHECK QUANTITY
+    // ==========================
+
     if (requestedQuantity > produce.quantity) {
       return res.status(400).json({
         message: `Only ${produce.quantity} ${produce.unit} is available`,
       });
     }
 
-    if (produce.price === null) {
-      return res.status(400).json({
-        message: "This produce does not have a price",
-      });
-    }
+    // ==========================
+    // CALCULATE TOTAL SERVER-SIDE
+    // ==========================
 
     const totalPrice =
       requestedQuantity * produce.price;
 
+    // ==========================
+    // TRANSACTION
+    // ==========================
+
     const result = await prisma.$transaction(async (tx) => {
+      // Atomically reserve inventory
       const updatedProduce = await tx.produce.updateMany({
         where: {
           id: produceId,
@@ -77,6 +113,7 @@ const createOrder = async (req, res) => {
             gte: requestedQuantity,
           },
         },
+
         data: {
           quantity: {
             decrement: requestedQuantity,
@@ -95,6 +132,7 @@ const createOrder = async (req, res) => {
         where: {
           id: produceId,
         },
+
         data: {
           status:
             remainingQuantity === 0
@@ -103,6 +141,7 @@ const createOrder = async (req, res) => {
         },
       });
 
+      // Create order using server-controlled price
       const order = await tx.order.create({
         data: {
           buyerId: buyer.id,
@@ -113,6 +152,7 @@ const createOrder = async (req, res) => {
           totalPrice,
           status: "CONFIRMED",
         },
+
         include: {
           produce: {
             include: {
@@ -147,12 +187,14 @@ const createOrder = async (req, res) => {
 // ==========================
 // GET MY ORDERS
 // ==========================
+
 const getMyOrders = async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       where: {
         buyerId: req.user.userId,
       },
+
       include: {
         produce: {
           include: {
@@ -164,6 +206,7 @@ const getMyOrders = async (req, res) => {
           },
         },
       },
+
       orderBy: {
         createdAt: "desc",
       },
@@ -184,11 +227,12 @@ const getMyOrders = async (req, res) => {
 // ==========================
 // GET ORDER BY ID
 // ==========================
+
 const getOrderById = async (req, res) => {
   try {
     const orderId = Number(req.params.id);
 
-    if (Number.isNaN(orderId)) {
+    if (!Number.isInteger(orderId) || orderId <= 0) {
       return res.status(400).json({
         message: "Invalid order ID",
       });
@@ -199,6 +243,7 @@ const getOrderById = async (req, res) => {
         id: orderId,
         buyerId: req.user.userId,
       },
+
       include: {
         produce: {
           include: {
@@ -229,6 +274,10 @@ const getOrderById = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// EXPORT
+// ==========================
 
 module.exports = {
   createOrder,

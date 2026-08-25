@@ -140,7 +140,7 @@ const updateFarmerOrderStatus = async (req, res) => {
     const orderId = Number(req.params.id);
     const { status } = req.body;
 
-    if (Number.isNaN(orderId)) {
+    if (!Number.isInteger(orderId)) {
       return res.status(400).json({
         message: "Invalid order ID",
       });
@@ -186,7 +186,7 @@ const updateFarmerOrderStatus = async (req, res) => {
       });
     }
 
-    // Don't allow changes after completion/cancellation
+    // Terminal states cannot be changed
     if (
       order.status === "COMPLETED" ||
       order.status === "CANCELLED"
@@ -196,56 +196,115 @@ const updateFarmerOrderStatus = async (req, res) => {
       });
     }
 
-    const updatedOrder = await prisma.$transaction(async (tx) => {
-  // If order is cancelled, return the ordered quantity
-  // back to the available produce.
-  if (
-    status === "CANCELLED" &&
-    order.status === "CONFIRMED"
-  ) {
-    await tx.produce.update({
-      where: {
-        id: order.produceId,
-      },
-      data: {
-        quantity: {
-          increment: order.quantity,
-        },
-        status: "AVAILABLE",
-      },
-    });
-  }
+    // CONFIRMED → COMPLETED or CANCELLED
+    if (
+      order.status === "CONFIRMED" &&
+      status !== "COMPLETED" &&
+      status !== "CANCELLED"
+    ) {
+      return res.status(400).json({
+        message:
+          "CONFIRMED orders can only be COMPLETED or CANCELLED",
+      });
+    }
 
-  return await tx.order.update({
-    where: {
-      id: order.id,
-    },
-    data: {
-      status,
-    },
-    include: {
-      buyer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
+    // PENDING → CONFIRMED or CANCELLED
+    if (
+      order.status === "PENDING" &&
+      status !== "CONFIRMED" &&
+      status !== "CANCELLED"
+    ) {
+      return res.status(400).json({
+        message:
+          "PENDING orders can only be CONFIRMED or CANCELLED",
+      });
+    }
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // CONFIRMED → CANCELLED
+      if (
+        order.status === "CONFIRMED" &&
+        status === "CANCELLED"
+      ) {
+        const cancelledOrder = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            status: "CONFIRMED",
+          },
+          data: {
+            status: "CANCELLED",
+          },
+        });
+
+        // Another request changed the order first
+        if (cancelledOrder.count !== 1) {
+          throw new Error("ORDER_STATE_CHANGED");
+        }
+
+        // Restore inventory exactly once
+        await tx.produce.update({
+          where: {
+            id: order.produceId,
+          },
+          data: {
+            quantity: {
+              increment: order.quantity,
+            },
+            status: "AVAILABLE",
+          },
+        });
+      }
+
+      // Other valid transitions
+      else {
+        const updated = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            status: order.status,
+          },
+          data: {
+            status,
+          },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error("ORDER_STATE_CHANGED");
+        }
+      }
+
+      return tx.order.findUnique({
+        where: {
+          id: orderId,
         },
-      },
-      produce: {
         include: {
-          crop: true,
+          buyer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+          produce: {
+            include: {
+              crop: true,
+            },
+          },
         },
-      },
-    },
-  });
-});
+      });
+    });
 
     return res.status(200).json({
       message: "Order status updated successfully",
       order: updatedOrder,
     });
   } catch (error) {
+    if (error.message === "ORDER_STATE_CHANGED") {
+      return res.status(409).json({
+        message: "Order status changed by another request",
+      });
+    }
+
     console.error("Update farmer order error:", error);
 
     return res.status(500).json({
@@ -253,7 +312,6 @@ const updateFarmerOrderStatus = async (req, res) => {
     });
   }
 };
-
 module.exports = {
   getFarmerOrders,
   getFarmerOrderById,

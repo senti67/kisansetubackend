@@ -2,6 +2,8 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 const authRoutes = require("./src/routes/auth.routes");
 const farmerRoutes = require("./src/routes/farmer.routes");
@@ -15,10 +17,36 @@ const adminRoutes = require("./src/routes/admin.routes");
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+app.use(helmet());
 
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skip: (req) => req.path.startsWith("/auth"),
+  message: {
+    message: "Too many requests. Please try again later.",
+  },
+});
+
+app.use("/api", apiLimiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    message:
+      "Too many authentication attempts. Please try again later.",
+  },
+});
+
+app.use(cors());
+app.use(express.json({ limit: "100kb" }));
+
+app.use("/api/auth", authLimiter);
 // Root
 app.get("/", (req, res) => {
   res.json({
@@ -33,7 +61,6 @@ app.use("/api/farms", farmRoutes);
 app.use("/api/crops", cropRoutes);
 app.use("/api/produce", produceRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
-app.use("/api/orders", orderRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/farmer/orders", farmerOrderRoutes);
 app.use("/api/admin", adminRoutes);

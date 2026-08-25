@@ -1,11 +1,11 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-
 const prisma = require("../lib/prisma");
 
 // ==========================
 // REGISTER
 // ==========================
+
 const register = async (req, res) => {
   try {
     const {
@@ -16,14 +16,84 @@ const register = async (req, res) => {
       role = "FARMER",
     } = req.body;
 
-    // Validate required fields
-    if (!name || !email || !password) {
+    // ==========================
+    // REQUIRED FIELD VALIDATION
+    // ==========================
+
+    if (
+      typeof name !== "string" ||
+      !name.trim() ||
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      !password
+    ) {
       return res.status(400).json({
         message: "Name, email and password are required",
       });
     }
 
-    // Only FARMER and BUYER can self-register
+    const normalizedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // ==========================
+    // NAME VALIDATION
+    // ==========================
+
+    if (
+      normalizedName.length < 2 ||
+      normalizedName.length > 100
+    ) {
+      return res.status(400).json({
+        message: "Name must be between 2 and 100 characters",
+      });
+    }
+
+    // ==========================
+    // EMAIL VALIDATION
+    // ==========================
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
+
+    // ==========================
+    // PASSWORD VALIDATION
+    // ==========================
+
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({
+        message: "Password must be between 8 and 128 characters",
+      });
+    }
+
+    // ==========================
+    // PHONE VALIDATION
+    // ==========================
+
+    if (
+      phone !== undefined &&
+      phone !== null &&
+      !/^\d{10}$/.test(String(phone))
+    ) {
+      return res.status(400).json({
+        message: "Phone number must contain exactly 10 digits",
+      });
+    }
+
+    const normalizedPhone =
+      phone !== undefined && phone !== null
+        ? String(phone).trim()
+        : null;
+
+    // ==========================
+    // ROLE VALIDATION
+    // ==========================
+
     const allowedRoles = ["FARMER", "BUYER"];
 
     if (!allowedRoles.includes(role)) {
@@ -32,10 +102,13 @@ const register = async (req, res) => {
       });
     }
 
-    // Check if email already exists
+    // ==========================
+    // CHECK EXISTING EMAIL
+    // ==========================
+
     const existingUser = await prisma.user.findUnique({
       where: {
-        email,
+        email: normalizedEmail,
       },
     });
 
@@ -45,21 +118,30 @@ const register = async (req, res) => {
       });
     }
 
-    // Hash password
+    // ==========================
+    // HASH PASSWORD
+    // ==========================
+
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create User
+    // ==========================
+    // CREATE USER
+    // ==========================
+
     const user = await prisma.user.create({
       data: {
-        name,
-        email,
+        name: normalizedName,
+        email: normalizedEmail,
         passwordHash,
-        phone,
+        phone: normalizedPhone,
         role,
       },
     });
 
-    // Create Farmer profile only for FARMER
+    // ==========================
+    // CREATE FARMER PROFILE
+    // ==========================
+
     if (role === "FARMER") {
       await prisma.farmer.create({
         data: {
@@ -67,6 +149,10 @@ const register = async (req, res) => {
         },
       });
     }
+
+    // ==========================
+    // RESPONSE
+    // ==========================
 
     return res.status(201).json({
       message:
@@ -94,21 +180,47 @@ const register = async (req, res) => {
 // ==========================
 // LOGIN
 // ==========================
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate required fields
-    if (!email || !password) {
+    // ==========================
+    // REQUIRED FIELD VALIDATION
+    // ==========================
+
+    if (
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      !password
+    ) {
       return res.status(400).json({
         message: "Email and password are required",
       });
     }
 
-    // Find user
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // ==========================
+    // EMAIL VALIDATION
+    // ==========================
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
+
+    // ==========================
+    // FIND USER
+    // ==========================
+
     const user = await prisma.user.findUnique({
       where: {
-        email,
+        email: normalizedEmail,
       },
     });
 
@@ -118,7 +230,10 @@ const login = async (req, res) => {
       });
     }
 
-    // Compare password
+    // ==========================
+    // COMPARE PASSWORD
+    // ==========================
+
     const passwordMatch = await bcrypt.compare(
       password,
       user.passwordHash
@@ -130,7 +245,10 @@ const login = async (req, res) => {
       });
     }
 
-    // Create JWT
+    // ==========================
+    // CREATE JWT
+    // ==========================
+
     const token = jwt.sign(
       {
         userId: user.id,
@@ -141,6 +259,10 @@ const login = async (req, res) => {
         expiresIn: "7d",
       }
     );
+
+    // ==========================
+    // RESPONSE
+    // ==========================
 
     return res.status(200).json({
       message: "Login successful",
@@ -167,12 +289,14 @@ const login = async (req, res) => {
 // ==========================
 // GET CURRENT USER
 // ==========================
+
 const getMe = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: {
         id: req.user.userId,
       },
+
       select: {
         id: true,
         name: true,
@@ -205,6 +329,7 @@ const getMe = async (req, res) => {
 // ==========================
 // EXPORT
 // ==========================
+
 module.exports = {
   register,
   login,

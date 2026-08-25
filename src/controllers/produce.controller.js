@@ -3,22 +3,77 @@ const prisma = require("../lib/prisma");
 // ==========================
 // CREATE PRODUCE
 // ==========================
+
 const createProduce = async (req, res) => {
   try {
-    const { cropId, quantity, unit, price, harvestDate } = req.body;
+    const {
+      cropId,
+      quantity,
+      unit,
+      price,
+      harvestDate,
+    } = req.body;
 
-    if (!cropId || quantity === undefined || !unit) {
+    // Validate crop ID
+    const parsedCropId = Number(cropId);
+
+    if (!Number.isInteger(parsedCropId) || parsedCropId <= 0) {
       return res.status(400).json({
-        message: "Crop ID, quantity and unit are required",
+        message: "Invalid crop ID",
       });
     }
 
-    if (quantity <= 0) {
+    // Validate quantity
+    if (
+      typeof quantity !== "number" ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0
+    ) {
       return res.status(400).json({
-        message: "Quantity must be greater than zero",
+        message: "Quantity must be a positive number",
       });
     }
 
+    // Validate unit
+    if (
+      typeof unit !== "string" ||
+      !unit.trim() ||
+      unit.trim().length > 20
+    ) {
+      return res.status(400).json({
+        message: "Unit is required and must be at most 20 characters",
+      });
+    }
+
+    // Validate price if provided
+    if (
+      price !== undefined &&
+      price !== null &&
+      (
+        typeof price !== "number" ||
+        !Number.isFinite(price) ||
+        price < 0
+      )
+    ) {
+      return res.status(400).json({
+        message: "Price must be a non-negative number",
+      });
+    }
+
+    // Validate harvest date if provided
+    let parsedHarvestDate = null;
+
+    if (harvestDate !== undefined && harvestDate !== null) {
+      parsedHarvestDate = new Date(harvestDate);
+
+      if (Number.isNaN(parsedHarvestDate.getTime())) {
+        return res.status(400).json({
+          message: "Invalid harvest date",
+        });
+      }
+    }
+
+    // Find logged-in farmer
     const farmer = await prisma.farmer.findUnique({
       where: {
         userId: req.user.userId,
@@ -31,10 +86,10 @@ const createProduce = async (req, res) => {
       });
     }
 
-    // Make sure the crop belongs to this farmer
+    // Make sure crop belongs to this farmer
     const crop = await prisma.crop.findFirst({
       where: {
-        id: Number(cropId),
+        id: parsedCropId,
         farm: {
           farmerId: farmer.id,
         },
@@ -50,14 +105,16 @@ const createProduce = async (req, res) => {
     const produce = await prisma.produce.create({
       data: {
         farmerId: farmer.id,
-        cropId: Number(cropId),
-        quantity: Number(quantity),
-        unit,
-        price: price !== undefined ? Number(price) : null,
-        harvestDate: harvestDate
-          ? new Date(harvestDate)
-          : null,
+        cropId: parsedCropId,
+        quantity,
+        unit: unit.trim(),
+        price:
+          price !== undefined && price !== null
+            ? price
+            : null,
+        harvestDate: parsedHarvestDate,
       },
+
       include: {
         crop: true,
       },
@@ -79,6 +136,7 @@ const createProduce = async (req, res) => {
 // ==========================
 // GET MY PRODUCE
 // ==========================
+
 const getMyProduce = async (req, res) => {
   try {
     const farmer = await prisma.farmer.findUnique({
@@ -97,9 +155,11 @@ const getMyProduce = async (req, res) => {
       where: {
         farmerId: farmer.id,
       },
+
       include: {
         crop: true,
       },
+
       orderBy: {
         createdAt: "desc",
       },
@@ -120,11 +180,12 @@ const getMyProduce = async (req, res) => {
 // ==========================
 // GET PRODUCE BY ID
 // ==========================
+
 const getProduceById = async (req, res) => {
   try {
     const produceId = Number(req.params.id);
 
-    if (Number.isNaN(produceId)) {
+    if (!Number.isInteger(produceId) || produceId <= 0) {
       return res.status(400).json({
         message: "Invalid produce ID",
       });
@@ -147,6 +208,7 @@ const getProduceById = async (req, res) => {
         id: produceId,
         farmerId: farmer.id,
       },
+
       include: {
         crop: true,
       },
@@ -173,11 +235,12 @@ const getProduceById = async (req, res) => {
 // ==========================
 // UPDATE PRODUCE
 // ==========================
+
 const updateProduce = async (req, res) => {
   try {
     const produceId = Number(req.params.id);
 
-    if (Number.isNaN(produceId)) {
+    if (!Number.isInteger(produceId) || produceId <= 0) {
       return res.status(400).json({
         message: "Invalid produce ID",
       });
@@ -215,24 +278,85 @@ const updateProduce = async (req, res) => {
       harvestDate,
     } = req.body;
 
+    // Validate quantity if provided
+    if (quantity !== undefined) {
+      if (
+        typeof quantity !== "number" ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0
+      ) {
+        return res.status(400).json({
+          message: "Quantity must be a positive number",
+        });
+      }
+    }
+
+    // Validate unit if provided
+    if (unit !== undefined) {
+      if (
+        typeof unit !== "string" ||
+        !unit.trim() ||
+        unit.trim().length > 20
+      ) {
+        return res.status(400).json({
+          message: "Invalid unit",
+        });
+      }
+    }
+
+    // Validate price if provided
+    if (price !== undefined && price !== null) {
+      if (
+        typeof price !== "number" ||
+        !Number.isFinite(price) ||
+        price < 0
+      ) {
+        return res.status(400).json({
+          message: "Price must be a non-negative number",
+        });
+      }
+    }
+
+    // Validate harvest date if provided
+    let parsedHarvestDate;
+
+    if (harvestDate !== undefined) {
+      if (harvestDate === null || harvestDate === "") {
+        parsedHarvestDate = null;
+      } else {
+        parsedHarvestDate = new Date(harvestDate);
+
+        if (Number.isNaN(parsedHarvestDate.getTime())) {
+          return res.status(400).json({
+            message: "Invalid harvest date",
+          });
+        }
+      }
+    }
+
     const produce = await prisma.produce.update({
       where: {
         id: produceId,
       },
+
       data: {
         ...(quantity !== undefined && {
-          quantity: Number(quantity),
+          quantity,
         }),
-        ...(unit !== undefined && { unit }),
+
+        ...(unit !== undefined && {
+          unit: unit.trim(),
+        }),
+
         ...(price !== undefined && {
-          price: Number(price),
+          price,
         }),
+
         ...(harvestDate !== undefined && {
-          harvestDate: harvestDate
-            ? new Date(harvestDate)
-            : null,
+          harvestDate: parsedHarvestDate,
         }),
       },
+
       include: {
         crop: true,
       },
@@ -254,11 +378,12 @@ const updateProduce = async (req, res) => {
 // ==========================
 // DELETE PRODUCE
 // ==========================
+
 const deleteProduce = async (req, res) => {
   try {
     const produceId = Number(req.params.id);
 
-    if (Number.isNaN(produceId)) {
+    if (!Number.isInteger(produceId) || produceId <= 0) {
       return res.status(400).json({
         message: "Invalid produce ID",
       });
@@ -310,6 +435,7 @@ const deleteProduce = async (req, res) => {
 // ==========================
 // UPDATE PRODUCE STATUS
 // ==========================
+
 const updateProduceStatus = async (req, res) => {
   try {
     const produceId = Number(req.params.id);
@@ -321,7 +447,7 @@ const updateProduceStatus = async (req, res) => {
       "SOLD",
     ];
 
-    if (Number.isNaN(produceId)) {
+    if (!Number.isInteger(produceId) || produceId <= 0) {
       return res.status(400).json({
         message: "Invalid produce ID",
       });
@@ -363,6 +489,7 @@ const updateProduceStatus = async (req, res) => {
       where: {
         id: produceId,
       },
+
       data: {
         status,
       },
@@ -380,6 +507,10 @@ const updateProduceStatus = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// EXPORT
+// ==========================
 
 module.exports = {
   createProduce,
