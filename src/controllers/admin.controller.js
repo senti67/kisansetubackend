@@ -109,6 +109,78 @@ const getUsers = async (req, res) => {
   }
 };
 
+const updateUserRole = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    const { role } = req.body;
+
+    if (!Number.isInteger(userId)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    const allowedRoles = ["FARMER", "BUYER"];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        message: "Invalid role. Use FARMER or BUYER",
+      });
+    }
+
+    if (req.user.userId === userId) {
+      return res.status(400).json({
+        message: "Admin cannot change their own role",
+      });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    if (existingUser.role === "ADMIN") {
+      return res.status(400).json({
+        message: "Cannot modify another ADMIN",
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        role,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+
+    return res.status(200).json({
+      message: "User role updated successfully",
+      user,
+    });
+  } catch (error) {
+    console.error("Admin role update error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 // ==========================
 // GET ALL ORDERS
 // ==========================
@@ -206,10 +278,82 @@ const getProduce = async (req, res) => {
     });
   }
 };
+const updateProduceStatus = async (req, res) => {
+  try {
+    const produceId = Number(req.params.id);
+    const { status } = req.body;
 
+    if (!Number.isInteger(produceId)) {
+      return res.status(400).json({
+        message: "Invalid produce ID",
+      });
+    }
+
+    const allowedStatuses = [
+      "AVAILABLE",
+      "RESERVED",
+      "SOLD",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid produce status",
+      });
+    }
+
+    const existingProduce = await prisma.produce.findUnique({
+      where: {
+        id: produceId,
+      },
+    });
+
+    if (!existingProduce) {
+      return res.status(404).json({
+        message: "Produce not found",
+      });
+    }
+
+    const produce = await prisma.produce.update({
+      where: {
+        id: produceId,
+      },
+      data: {
+        status,
+      },
+      include: {
+        crop: true,
+        farmer: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      message: "Produce status updated successfully",
+      produce,
+    });
+  } catch (error) {
+    console.error("Admin produce status error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 module.exports = {
   getDashboard,
   getUsers,
+  updateUserRole,
   getOrders,
   getProduce,
+  updateProduceStatus,
 };

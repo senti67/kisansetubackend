@@ -3,8 +3,10 @@ const express = require("express");
 const {
   getDashboard,
   getUsers,
+  updateUserRole,
   getOrders,
   getProduce,
+  updateProduceStatus,
 } = require("../controllers/admin.controller");
 
 const authenticate = require("../middleware/auth.middleware");
@@ -16,8 +18,15 @@ router.use(authenticate);
 router.use(requireRole("ADMIN"));
 
 router.get("/dashboard", getDashboard);
+
 router.get("/users", getUsers);
+
+router.patch("/users/:id/role", updateUserRole);
+
 router.get("/orders", getOrders);
+
 router.get("/produce", getProduce);
+
+router.patch("/produce/:id/status", updateProduceStatus);
 
 module.exports = router;
