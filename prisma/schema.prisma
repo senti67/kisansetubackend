@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  phone        String?  @unique
+  role         UserRole @default(FARMER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  farmer Farmer?
+}
+
+model Farmer {
+  id     Int  @id @default(autoincrement())
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  address  String?
+  district String?
+  state    String?
+  pincode  String?
+
+  farms    Farm[]
+  produces Produce[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Farm {
+  id       Int    @id @default(autoincrement())
+  farmerId Int
+  farmer   Farmer @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
+  name      String
+  location  String?
+  areaAcres Float?
+
+  crops     Crop[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Crop {
+  id     Int  @id @default(autoincrement())
+  farmId Int
+  farm   Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  name     String
+  variety  String?
+  season   String?
+  quantity Float?
+  unit     String?
+
+  produces Produce[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Produce {
+  id       Int @id @default(autoincrement())
+  farmerId Int
+  cropId   Int
+
+  farmer Farmer @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  crop   Crop   @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  quantity    Float
+  unit        String
+  price       Float?
+  harvestDate DateTime?
+  status      ProduceStatus @default(AVAILABLE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  FARMER
+  BUYER
+  ADMIN
+}
+
+enum ProduceStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
