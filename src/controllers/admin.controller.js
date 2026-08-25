@@ -349,6 +349,132 @@ const updateProduceStatus = async (req, res) => {
     });
   }
 };
+const updateOrderStatus = async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    const { status } = req.body;
+
+    if (!Number.isInteger(orderId)) {
+      return res.status(400).json({
+        message: "Invalid order ID",
+      });
+    }
+
+    const allowedStatuses = [
+      "CONFIRMED",
+      "COMPLETED",
+      "CANCELLED",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid order status",
+      });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: {
+        id: orderId,
+      },
+      include: {
+        produce: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        message: "Order not found",
+      });
+    }
+
+    // Terminal states cannot be changed
+    if (
+      order.status === "COMPLETED" ||
+      order.status === "CANCELLED"
+    ) {
+      return res.status(400).json({
+        message: `Order is already ${order.status}`,
+      });
+    }
+
+    // Only allow sensible transitions
+    if (
+      order.status === "CONFIRMED" &&
+      status !== "COMPLETED" &&
+      status !== "CANCELLED"
+    ) {
+      return res.status(400).json({
+        message: "CONFIRMED orders can only be COMPLETED or CANCELLED",
+      });
+    }
+
+    if (
+      order.status === "PENDING" &&
+      status !== "CONFIRMED" &&
+      status !== "CANCELLED"
+    ) {
+      return res.status(400).json({
+        message: "PENDING orders can only be CONFIRMED or CANCELLED",
+      });
+    }
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // If cancelling a confirmed order,
+      // restore the reserved quantity to produce.
+      if (
+        order.status === "CONFIRMED" &&
+        status === "CANCELLED"
+      ) {
+        await tx.produce.update({
+          where: {
+            id: order.produceId,
+          },
+          data: {
+            quantity: {
+              increment: order.quantity,
+            },
+            status: "AVAILABLE",
+          },
+        });
+      }
+
+      return tx.order.update({
+        where: {
+          id: orderId,
+        },
+        data: {
+          status,
+        },
+        include: {
+          buyer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+          produce: {
+            include: {
+              crop: true,
+            },
+          },
+        },
+      });
+    });
+
+    return res.status(200).json({
+      message: "Order status updated successfully",
+      order: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Admin order status error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 module.exports = {
   getDashboard,
   getUsers,
@@ -356,4 +482,5 @@ module.exports = {
   getOrders,
   getProduce,
   updateProduceStatus,
+  updateOrderStatus,
 };
