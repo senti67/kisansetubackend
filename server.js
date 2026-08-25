@@ -11,6 +11,7 @@ const produceRoutes = require("./src/routes/produce.routes");
 const marketplaceRoutes = require("./src/routes/marketplace.routes");
 const orderRoutes = require("./src/routes/order.routes");
 const farmerOrderRoutes = require("./src/routes/farmer-order.routes");
+const adminRoutes = require("./src/routes/admin.routes");
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/farmer/orders", farmerOrderRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Server
 const PORT = process.env.PORT || 5000;
