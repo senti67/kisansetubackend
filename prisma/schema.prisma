@@ -32,6 +32,7 @@ model Farmer {
 
   farms    Farm[]
   produces Produce[]
+  bookings Booking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,6 +83,8 @@ model Produce {
   harvestDate DateTime?
   status      ProduceStatus @default(AVAILABLE)
 
+  bookings Booking[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -96,4 +99,73 @@ enum ProduceStatus {
   AVAILABLE
   RESERVED
   SOLD
+}
+
+model ProcurementCenter {
+  id             Int                     @id @default(autoincrement())
+  name           String
+  location       String?
+  district       String?
+  operatingHours String?
+  dailyCapacity  Int
+  status         ProcurementCenterStatus @default(ACTIVE)
+
+  slots    ProcurementSlot[]
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProcurementSlot {
+  id       Int               @id @default(autoincrement())
+  centerId Int
+  center   ProcurementCenter @relation(fields: [centerId], references: [id], onDelete: Cascade)
+
+  date        DateTime
+  startTime   String
+  endTime     String
+  capacity    Int
+  bookedCount Int      @default(0)
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Booking {
+  id Int @id @default(autoincrement())
+
+  farmerId  Int
+  produceId Int
+  centerId  Int
+  slotId    Int
+
+  farmer  Farmer            @relation(fields: [farmerId], references: [id])
+  produce Produce           @relation(fields: [produceId], references: [id])
+  center  ProcurementCenter @relation(fields: [centerId], references: [id])
+  slot    ProcurementSlot   @relation(fields: [slotId], references: [id])
+
+  quantity    Float
+  unit        String
+  tokenNumber String
+  status      BookingStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([slotId, tokenNumber])
+}
+
+enum ProcurementCenterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
 }
