@@ -16,6 +16,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  procurementTransactions ProcurementTransaction[]
+
   farmer Farmer?
   orders Order[]
 }
@@ -63,7 +65,8 @@ model Crop {
   quantity Float?
   unit     String?
 
-  produces Produce[]
+  produces          Produce[]
+  procurementPrices ProcurementPrice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -180,10 +183,54 @@ model Booking {
   tokenNumber String
   status      BookingStatus @default(PENDING)
 
+  transaction ProcurementTransaction?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([slotId, tokenNumber])
+}
+
+model ProcurementPrice {
+  id     Int  @id @default(autoincrement())
+  cropId Int
+  crop   Crop @relation(fields: [cropId], references: [id])
+
+  rate          Decimal
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProcurementTransaction {
+  id Int @id @default(autoincrement())
+
+  bookingId Int     @unique
+  booking   Booking @relation(fields: [bookingId], references: [id])
+
+  verifiedBy Int?
+  verifier   User? @relation(fields: [verifiedBy], references: [id])
+
+  decision ProcurementDecision
+
+  verifiedQuantity   Decimal
+  verifiedQuality    String?
+  applicableRate     Decimal
+  finalPayableAmount Decimal
+
+  rejectionReason String?
+  verifiedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ProcurementDecision {
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
 }
 
 enum ProcurementCenterStatus {
