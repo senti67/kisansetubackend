@@ -909,6 +909,407 @@ const verifyBooking = async (req, res) => {
     });
   }
 };
+const getMyBookings = async (req, res) => {
+  try {
+    const farmer = await prisma.farmer.findUnique({
+      where: {
+        userId: req.user.userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!farmer) {
+      return res.status(404).json({
+        message: "Farmer profile not found",
+      });
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        farmerId: farmer.id,
+      },
+      include: {
+        produce: {
+          select: {
+            id: true,
+            quantity: true,
+            unit: true,
+            status: true,
+            crop: {
+              select: {
+                id: true,
+                name: true,
+                variety: true,
+                season: true,
+                unit: true,
+              },
+            },
+          },
+        },
+        center: {
+          select: {
+            id: true,
+            name: true,
+            location: true,
+            district: true,
+            operatingHours: true,
+            status: true,
+          },
+        },
+        slot: {
+          select: {
+            id: true,
+            date: true,
+            startTime: true,
+            endTime: true,
+            capacity: true,
+            bookedCount: true,
+          },
+        },
+        transaction: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return res.status(200).json({
+      bookings,
+    });
+  } catch (error) {
+    console.error("Get farmer procurement bookings error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+const getBookingById = async (req, res) => {
+  try {
+    const parsedBookingId = Number(req.params.bookingId);
+
+    if (!Number.isInteger(parsedBookingId) || parsedBookingId <= 0) {
+      return res.status(400).json({
+        message: "Invalid booking ID",
+      });
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id: parsedBookingId,
+      },
+      include: {
+        farmer: {
+          select: {
+            id: true,
+            userId: true,
+          },
+        },
+        produce: {
+          select: {
+            id: true,
+            quantity: true,
+            unit: true,
+            status: true,
+            crop: {
+              select: {
+                id: true,
+                name: true,
+                variety: true,
+                season: true,
+                unit: true,
+              },
+            },
+          },
+        },
+        center: true,
+        slot: true,
+        transaction: true,
+      },
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
+
+    const isAdmin = req.user.role === "ADMIN";
+
+    if (!isAdmin && booking.farmer.userId !== req.user.userId) {
+      return res.status(403).json({
+        message: "You can only access your own bookings",
+      });
+    }
+
+    return res.status(200).json({
+      booking,
+    });
+  } catch (error) {
+    console.error("Get procurement booking error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+const getBookingByToken = async (req, res) => {
+  try {
+    const parsedSlotId = Number(req.params.slotId);
+    const tokenNumber = String(req.params.tokenNumber || "").trim();
+
+    if (!Number.isInteger(parsedSlotId) || parsedSlotId <= 0) {
+      return res.status(400).json({
+        message: "Invalid slot ID",
+      });
+    }
+
+    if (!tokenNumber) {
+      return res.status(400).json({
+        message: "Token number is required",
+      });
+    }
+
+    const booking = await prisma.booking.findFirst({
+      where: {
+        slotId: parsedSlotId,
+        tokenNumber,
+      },
+      include: {
+        produce: {
+          select: {
+            id: true,
+            quantity: true,
+            unit: true,
+            status: true,
+            crop: {
+              select: {
+                id: true,
+                name: true,
+                variety: true,
+                season: true,
+                unit: true,
+              },
+            },
+          },
+        },
+        center: {
+          select: {
+            id: true,
+            name: true,
+            location: true,
+            district: true,
+            operatingHours: true,
+            status: true,
+          },
+        },
+        slot: {
+          select: {
+            id: true,
+            centerId: true,
+            date: true,
+            startTime: true,
+            endTime: true,
+            capacity: true,
+            bookedCount: true,
+          },
+        },
+        transaction: true,
+      },
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        message: "Booking with token not found",
+      });
+    }
+
+    return res.status(200).json({
+      booking,
+    });
+  } catch (error) {
+    console.error("Get procurement booking by token error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+const getTransactionById = async (req, res) => {
+  try {
+    const parsedTransactionId = Number(req.params.transactionId);
+
+    if (
+      !Number.isInteger(parsedTransactionId) ||
+      parsedTransactionId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Invalid transaction ID",
+      });
+    }
+
+    const transaction = await prisma.procurementTransaction.findUnique({
+      where: {
+        id: parsedTransactionId,
+      },
+      include: {
+        booking: {
+          include: {
+            farmer: {
+              select: {
+                id: true,
+                userId: true,
+              },
+            },
+            produce: {
+              select: {
+                id: true,
+                quantity: true,
+                unit: true,
+                cropId: true,
+                crop: {
+                  select: {
+                    id: true,
+                    name: true,
+                    variety: true,
+                    season: true,
+                    unit: true,
+                  },
+                },
+              },
+            },
+            center: {
+              select: {
+                id: true,
+                name: true,
+                location: true,
+                district: true,
+              },
+            },
+            slot: {
+              select: {
+                id: true,
+                date: true,
+                startTime: true,
+                endTime: true,
+              },
+            },
+          },
+        },
+        verifier: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: "Procurement transaction not found",
+      });
+    }
+
+    if (
+      req.user.role !== "ADMIN" &&
+      transaction.booking.farmer.userId !== req.user.userId
+    ) {
+      return res.status(403).json({
+        message: "Access denied",
+      });
+    }
+
+    return res.status(200).json({
+      transaction,
+    });
+  } catch (error) {
+    console.error("Get procurement transaction error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+const getTransactions = async (req, res) => {
+  try {
+    const transactions = await prisma.procurementTransaction.findMany({
+      include: {
+        booking: {
+          include: {
+            farmer: {
+              select: {
+                id: true,
+                userId: true,
+              },
+            },
+            produce: {
+              select: {
+                id: true,
+                quantity: true,
+                unit: true,
+                crop: {
+                  select: {
+                    id: true,
+                    name: true,
+                    variety: true,
+                    season: true,
+                    unit: true,
+                  },
+                },
+              },
+            },
+            center: {
+              select: {
+                id: true,
+                name: true,
+                location: true,
+                district: true,
+              },
+            },
+            slot: {
+              select: {
+                id: true,
+                date: true,
+                startTime: true,
+                endTime: true,
+              },
+            },
+          },
+        },
+        verifier: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return res.status(200).json({
+      transactions,
+    });
+  } catch (error) {
+    console.error("Get procurement transactions error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 module.exports = {
   getCenters,
   createCenter,
@@ -919,4 +1320,9 @@ module.exports = {
   getPrices,
   confirmBooking,
   verifyBooking,
+  getMyBookings,
+  getBookingById,
+  getBookingByToken,
+  getTransactionById,
+  getTransactions,
 };

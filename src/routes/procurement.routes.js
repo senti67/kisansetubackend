@@ -10,6 +10,11 @@ const {
   getPrices,
   confirmBooking,
   verifyBooking,
+  getMyBookings,
+  getBookingById,
+  getBookingByToken,
+  getTransactionById,
+  getTransactions,
 } = require("../controllers/procurement.controller");
 
 const authenticate = require("../middleware/auth.middleware");
@@ -72,5 +77,33 @@ router.post(
   requireRole("ADMIN"),
   verifyBooking
 );
+router.get(
+  "/bookings",
+  authenticate,
+  requireRole("FARMER"),
+  getMyBookings
+);
+router.get(
+  "/bookings/:bookingId",
+  authenticate,
+  getBookingById
+);
+router.get(
+  "/slots/:slotId/token/:tokenNumber",
+  authenticate,
+  getBookingByToken
+);
+router.get(
+  "/transactions",
+  authenticate,
+  requireRole("ADMIN"),
+  getTransactions
+);
+router.get(
+  "/transactions/:transactionId",
+  authenticate,
+  getTransactionById
+);
+
 
 module.exports = router;
